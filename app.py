@@ -4,39 +4,36 @@ import tarfile
 import gradio as gr
 import numpy as np
 
-from os import path, remove
+from os import makedirs, path, remove
 from PIL import Image as PImage
 from urllib import request
 
-def download_extract(url):
-  target_path = url.split("/")[-1]
-
-  with request.urlopen(request.Request(url), timeout=15.0) as response:
-    if response.status == 200:
-      with open(target_path, "wb") as f:
-        f.write(response.read())
-  
-  tar = tarfile.open(target_path, "r:gz")
-  tar.extractall()
-  tar.close()
-  remove(target_path)
-
-download_extract("https://digitais.acervos.at.eu.org/imgs/herbario/arts/full.tgz")
-
 DATA_FILE = "./20250619_processed.json"
-IMG_DIR = "./full"
+IMG_URL = "https://digitais.acervos.at.eu.org/imgs/herbario/arts"
+IMG_DIR = "./imgs/full"
+
+
+### prep files and dirs
+makedirs(IMG_DIR, exist_ok=True)
 
 with open(DATA_FILE, "r") as ifp:
   all_data = json.load(ifp)
+
+
+### define functions
+def download_image(id):
+  image_url = f"{IMG_URL}/full/{id}.jpg"
+  filename = f"{IMG_DIR}/{id}.jpg"
+  request.urlretrieve(image_url, filename)
+
 
 def get_min_height_and_size(idObjIdxs_data):
   height_min = 1e6
   sizes = {}
 
   for idObjIdxs in idObjIdxs_data:
-    if len(idObjIdxs["objIdxs"]) < 1:
-      continue
     id = idObjIdxs["id"]
+
     img = PImage.open(path.join(IMG_DIR, f"{id}.jpg"))
     iw,ih = img.size
     sizes[id] = (iw,ih)
@@ -48,14 +45,15 @@ def get_min_height_and_size(idObjIdxs_data):
 
   return height_min, sizes
 
+
 def get_mosaic_size(idObjIdxs_data, height_min, sizes):
   width_sum = 0
 
   for idObjIdxs in idObjIdxs_data:
-    if len(idObjIdxs["objIdxs"]) < 1:
-      continue
     id = idObjIdxs["id"]
+
     iw,ih = sizes[id]
+
     for idx in idObjIdxs["objIdxs"]:
       (x0,y0,x1,y1) = all_data[id]["objects"][idx]["box"]
       crop_w = iw * (x1 - x0)
@@ -66,7 +64,14 @@ def get_mosaic_size(idObjIdxs_data, height_min, sizes):
   mos_h = int(1.2 * mos_w)
   return mos_w, mos_h
 
-def get_mosaic(idObjIdxs_data):
+
+def get_mosaic(idObjIdxs_all):
+  idObjIdxs_data = [x for x in idObjIdxs_all if len(x["objIdxs"]) > 0]
+
+  for id in [x["id"] for x in idObjIdxs_data]:
+    if not path.isfile(path.join(IMG_DIR, f"{id}.jpg")):
+      download_image(id)
+
   height_min, sizes = get_min_height_and_size(idObjIdxs_data)
   mos_w, mos_h = get_mosaic_size(idObjIdxs_data, height_min, sizes)
 
@@ -74,11 +79,11 @@ def get_mosaic(idObjIdxs_data):
   cur_x, cur_y = 0, 0
 
   for idObjIdxs in idObjIdxs_data:
-    if len(idObjIdxs["objIdxs"]) < 1:
-      continue
     id = idObjIdxs["id"]
+
     img = PImage.open(path.join(IMG_DIR, f"{id}.jpg"))
     iw,ih = img.size
+
     for idx in idObjIdxs["objIdxs"]:
       (x0,y0,x1,y1) = all_data[id]["objects"][idx]["box"]
       crop_w = iw * (x1 - x0)
@@ -113,6 +118,8 @@ def get_mosaic(idObjIdxs_data):
   mos_img.thumbnail((1024,1024))
   return mos_img
 
+
+### start Gradio
 with gr.Blocks() as demo:
   gr.Interface(
     fn=get_mosaic,
