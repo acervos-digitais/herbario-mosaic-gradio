@@ -23,7 +23,7 @@ def download_extract(url):
 
 download_extract("https://digitais.acervos.at.eu.org/imgs/herbario/arts/full.tgz")
 
-DATA_FILE = "./metadata/json/20250619_processed.json"
+DATA_FILE = "./20250619_processed.json"
 IMG_DIR = "./full"
 
 with open(DATA_FILE, "r") as ifp:
