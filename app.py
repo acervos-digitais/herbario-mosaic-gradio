@@ -27,8 +27,8 @@ def download_image(id):
   request.urlretrieve(image_url, filename)
 
 
-def get_min_height_and_size(idObjIdxs_data):
-  height_min = 1e6
+def get_min_height_and_size(idObjIdxs_data, min_min_height=64):
+  heights = []
   sizes = {}
 
   for idObjIdxs in idObjIdxs_data:
@@ -41,9 +41,11 @@ def get_min_height_and_size(idObjIdxs_data):
     for idx in idObjIdxs["objIdxs"]:
       (x0,y0,x1,y1) = all_data[id]["objects"][idx]["box"]
       crop_h = ih * (y1 - y0)
-      height_min = min(height_min, crop_h)
+      heights.append(max(crop_h, min_min_height))
 
-  return height_min, sizes
+  heights_sorted = list(set(sorted(heights)))
+
+  return heights_sorted[0], sizes
 
 
 def get_mosaic_size(idObjIdxs_data, height_min, sizes):
