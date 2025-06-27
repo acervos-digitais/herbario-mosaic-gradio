@@ -11,6 +11,7 @@ from urllib import request
 DATA_FILE = "./20250619_processed.json"
 IMG_URL = "https://digitais.acervos.at.eu.org/imgs/herbario/arts"
 IMG_DIR = "./imgs/full"
+PImage.MAX_IMAGE_PIXELS = 2**31
 
 
 ### prep files and dirs
@@ -27,7 +28,7 @@ def download_image(id):
   request.urlretrieve(image_url, filename)
 
 
-def get_min_height_and_size(idObjIdxs_data, min_min_height=64):
+def get_min_height_and_size(idObjIdxs_data, min_min_height=48):
   heights = []
   sizes = {}
 
@@ -117,7 +118,7 @@ def get_mosaic(idObjIdxs_all):
     mos_img.paste(row, (cur_x, cur_y))
 
   mos_img = mos_img.crop((0, 0, mos_w, cur_y + crop_h))
-  mos_img.thumbnail((1024,1024))
+  mos_img.thumbnail((1024, 1024))
   return mos_img
 
 
