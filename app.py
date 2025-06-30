@@ -11,7 +11,8 @@ from urllib import request
 DATA_FILE = "./20250619_processed.json"
 IMG_URL = "https://digitais.acervos.at.eu.org/imgs/herbario/arts"
 IMG_DIR = "./imgs/full"
-PImage.MAX_IMAGE_PIXELS = 2**31
+MAX_PIXELS = 2**25
+PImage.MAX_IMAGE_PIXELS = 2 * MAX_PIXELS
 
 
 ### define functions
@@ -35,7 +36,7 @@ def download_image(id):
   request.urlretrieve(image_url, filename)
 
 
-def get_min_height_and_size(idObjIdxs_data, min_min_height=32):
+def get_min_height_and_size(idObjIdxs_data, min_min_height=64):
   heights = []
   sizes = {}
 
@@ -70,9 +71,17 @@ def get_mosaic_size(idObjIdxs_data, height_min, sizes):
       crop_h = ih * (y1 - y0)
       width_sum += (height_min / crop_h) * crop_w
 
-  mos_w = int((width_sum * height_min) ** 0.5)
-  mos_h = int(1.2 * mos_w)
-  return mos_w, mos_h
+  total_area = width_sum * height_min
+  scale = 1.0
+  mos_w = total_area ** 0.5
+  mos_h = 1.2 * mos_w
+
+  if total_area > MAX_PIXELS:
+    scale = (MAX_PIXELS / total_area) ** 0.5
+    mos_w *= scale
+    mos_h *= scale
+
+  return int(mos_w), int(mos_h), scale
 
 
 def get_mosaic(idObjIdxs_all):
@@ -83,7 +92,7 @@ def get_mosaic(idObjIdxs_all):
       download_image(id)
 
   height_min, sizes = get_min_height_and_size(idObjIdxs_data)
-  mos_w, mos_h = get_mosaic_size(idObjIdxs_data, height_min, sizes)
+  mos_w, mos_h, limit_scale = get_mosaic_size(idObjIdxs_data, height_min, sizes)
 
   mos_img = PImage.fromarray(np.zeros((mos_h, mos_w))).convert("RGB")
   cur_x, cur_y = 0, 0
@@ -99,7 +108,7 @@ def get_mosaic(idObjIdxs_all):
       crop_w = iw * (x1 - x0)
       crop_h = ih * (y1 - y0)
 
-      scale_factor = height_min / crop_h
+      scale_factor = limit_scale * (height_min / crop_h)
       crop_w, crop_h = int(scale_factor * crop_w), int(scale_factor * crop_h)
 
       crop_img = img.crop((int(x0 * iw), int(y0 * ih), int(x1 * iw), int(y1 * ih))).resize((crop_w, crop_h))
@@ -125,7 +134,7 @@ def get_mosaic(idObjIdxs_all):
     mos_img.paste(row, (cur_x, cur_y))
 
   mos_img = mos_img.crop((0, 0, mos_w, cur_y + crop_h))
-  mos_img.thumbnail((1024, 1024))
+  mos_img.thumbnail((2048, 2048))
   return mos_img
 
 
