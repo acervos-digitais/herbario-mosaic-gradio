@@ -117,7 +117,6 @@ def get_mosaic(idObjIdxs_all):
     row = mos_img.crop((0, 0, empty_w, height_min))
     mos_img.paste(row, (cur_x, cur_y))
 
-  mos_img.thumbnail((2048, 2048))
   mos_img = mos_img.crop((0, 0, mos_w, cur_y + crop_h))
   mos_img.thumbnail((1024, 1024))
   return mos_img
