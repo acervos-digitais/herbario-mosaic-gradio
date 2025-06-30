@@ -14,14 +14,21 @@ IMG_DIR = "./imgs/full"
 PImage.MAX_IMAGE_PIXELS = 2**31
 
 
-### prep files and dirs
-makedirs(IMG_DIR, exist_ok=True)
-
-with open(DATA_FILE, "r") as ifp:
-  all_data = json.load(ifp)
-
-
 ### define functions
+def download_extract(url, target_path):
+  tar_path = url.split("/")[-1]
+
+  with request.urlopen(request.Request(url), timeout=30.0) as response:
+    if response.status == 200:
+      with open(tar_path, "wb") as f:
+        f.write(response.read())
+
+  tar = tarfile.open(tar_path, "r:gz")
+  tar.extractall(target_path, filter="data")
+  tar.close()
+  remove(tar_path)
+
+
 def download_image(id):
   image_url = f"{IMG_URL}/full/{id}.jpg"
   filename = f"{IMG_DIR}/{id}.jpg"
@@ -120,6 +127,14 @@ def get_mosaic(idObjIdxs_all):
   mos_img = mos_img.crop((0, 0, mos_w, cur_y + crop_h))
   mos_img.thumbnail((1024, 1024))
   return mos_img
+
+
+### prep files and dirs
+makedirs(IMG_DIR, exist_ok=True)
+download_extract(f"{IMG_URL}/full.tgz", "./imgs")
+
+with open(DATA_FILE, "r") as ifp:
+  all_data = json.load(ifp)
 
 
 ### start Gradio
