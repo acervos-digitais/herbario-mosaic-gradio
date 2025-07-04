@@ -8,7 +8,7 @@ from os import makedirs, path, remove
 from PIL import Image as PImage
 from urllib import request
 
-DATA_FILE = "./20250619_processed.json"
+OBJS_URLS = "https://raw.githubusercontent.com/acervos-digitais/herbario-data/main/json/20250705_processed.json"
 IMG_URL = "https://digitais.acervos.at.eu.org/imgs/herbario/arts"
 IMG_DIR = "./imgs/full"
 MAX_PIXELS = 2**25
@@ -16,13 +16,18 @@ PImage.MAX_IMAGE_PIXELS = 2 * MAX_PIXELS
 
 
 ### define functions
-def download_extract(url, target_path):
-  tar_path = url.split("/")[-1]
+def download_file(url, local_path="."):
+  file_name = url.split("/")[-1]
+  file_path = path.join(local_path, file_name)
 
   with request.urlopen(request.Request(url), timeout=30.0) as response:
     if response.status == 200:
-      with open(tar_path, "wb") as f:
+      with open(file_path, "wb") as f:
         f.write(response.read())
+  return file_path
+
+def download_extract(url, target_path):
+  tar_path = download_file(url)
 
   tar = tarfile.open(tar_path, "r:gz")
   tar.extractall(target_path, filter="data")
@@ -140,9 +145,10 @@ def get_mosaic(idObjIdxs_all):
 
 ### prep files and dirs
 makedirs(IMG_DIR, exist_ok=True)
+objs_file_path = download_file(OBJS_URLS)
 download_extract(f"{IMG_URL}/full.tgz", "./imgs")
 
-with open(DATA_FILE, "r") as ifp:
+with open(objs_file_path, "r") as ifp:
   all_data = json.load(ifp)
 
 
