@@ -11,6 +11,7 @@ from urllib import request
 OBJS_URLS = "https://raw.githubusercontent.com/acervos-digitais/herbario-data/main/json/20250705_processed.json"
 IMG_URL = "https://digitais.acervos.at.eu.org/imgs/herbario/arts"
 IMG_DIR = "./imgs/full"
+XY_OUT_DIM = (1024, 1024)
 MAX_PIXELS = 2**25
 PImage.MAX_IMAGE_PIXELS = 2 * MAX_PIXELS
 
@@ -89,7 +90,7 @@ def get_mosaic_size(idObjIdxs_data, height_min, sizes):
   return int(mos_w), int(mos_h), scale
 
 
-def get_mosaic(idObjIdxs_all):
+def get_grid_mosaic(idObjIdxs_all):
   idObjIdxs_data = [x for x in idObjIdxs_all if len(x["objIdxs"]) > 0]
 
   for id in [x["id"] for x in idObjIdxs_data]:
@@ -143,6 +144,58 @@ def get_mosaic(idObjIdxs_all):
   return mos_img
 
 
+def get_xy_mosaic(idObjIdxs_all):
+  idObjIdxs_data = [x for x in idObjIdxs_all if len(x["objIdxs"]) > 0]
+
+  for id in [x["id"] for x in idObjIdxs_data]:
+    if not path.isfile(path.join(IMG_DIR, f"{id}.jpg")):
+      download_image(id)
+
+  pix_cnts = np.zeros(XY_OUT_DIM)
+  pix_vals = np.zeros((*XY_OUT_DIM, 3))
+
+  for idObjIdxs in idObjIdxs_data:
+    id = idObjIdxs["id"]
+
+    img = PImage.open(path.join(IMG_DIR, f"{id}.jpg"))
+    iw,ih = img.size
+    w_scale, h_scale = XY_OUT_DIM[0] / iw, XY_OUT_DIM[1] / ih
+    crop_scale = min(w_scale, h_scale)
+    siw, sih = iw * crop_scale, ih * crop_scale
+
+    for idx in idObjIdxs["objIdxs"]:
+      (x0,y0,x1,y1) = all_data[id]["objects"][idx]["box"]
+      crop_w = (x1 - x0)
+      crop_h = (y1 - y0)
+
+      center_x = (x0 + x1) / 2
+      center_y = (y0 + y1) / 2
+
+      src_x0 = int(x0 * iw)
+      src_y0 = int(y0 * ih)
+      src_x1 = int(x1 * iw)
+      src_y1 = int(y1 * ih)
+
+      dst_w = int(crop_w * siw)
+      dst_h = int(crop_h * sih)
+
+      dst_x0 = max(0, min(int(center_x * XY_OUT_DIM[0] - (dst_w / 2)), XY_OUT_DIM[0]))
+      dst_y0 = max(0, min(int(center_y * XY_OUT_DIM[1] - (dst_h / 2)), XY_OUT_DIM[1]))
+      dst_x1 = max(0, min(int(center_x * XY_OUT_DIM[0] + (dst_w / 2)), XY_OUT_DIM[0]))
+      dst_y1 = max(0, min(int(center_y * XY_OUT_DIM[1] + (dst_h / 2)), XY_OUT_DIM[1]))
+
+      dst_w = dst_x1 - dst_x0
+      dst_h = dst_y1 - dst_y0
+
+      crop_vals = np.array(img.crop((src_x0, src_y0, src_x1, src_y1)).resize((dst_w, dst_h)))
+      pix_vals[dst_y0:dst_y1, dst_x0:dst_x1] += crop_vals
+      pix_cnts[dst_y0:dst_y1, dst_x0:dst_x1] += 1
+
+  pix_cnts = np.expand_dims(pix_cnts, axis=-1)
+  pix_avg = np.divide(pix_vals, pix_cnts, out=np.ones_like(pix_vals), where=pix_cnts!=0)
+  return PImage.fromarray(pix_avg.astype(np.uint8))
+
+
 ### prep files and dirs
 makedirs(IMG_DIR, exist_ok=True)
 objs_file_path = download_file(OBJS_URLS)
@@ -155,7 +208,16 @@ with open(objs_file_path, "r") as ifp:
 ### start Gradio
 with gr.Blocks() as demo:
   gr.Interface(
-    fn=get_mosaic,
+    title="grid",
+    fn=get_grid_mosaic,
+    inputs="json",
+    outputs="image",
+    flagging_mode="never",
+  )
+
+  gr.Interface(
+    title="xy",
+    fn=get_xy_mosaic,
     inputs="json",
     outputs="image",
     flagging_mode="never",
