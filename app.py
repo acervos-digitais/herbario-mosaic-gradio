@@ -1,12 +1,14 @@
 import json
-import tarfile
 
 import gradio as gr
 import numpy as np
 
-from os import makedirs, path, remove
+from os import makedirs, path
 from PIL import Image as PImage
-from urllib import request
+
+from utils import download_extract, download_file, download_image
+from utils import boxpct2pix, centerpct2boxpix, constrain
+
 
 OBJS_URLS = "https://raw.githubusercontent.com/acervos-digitais/herbario-data/main/json/20250705_processed.json"
 IMG_URL = "https://digitais.acervos.at.eu.org/imgs/herbario/arts"
@@ -14,32 +16,6 @@ IMG_DIR = "./imgs/full"
 XY_OUT_DIM = (1024, 1024)
 MAX_PIXELS = 2**25
 PImage.MAX_IMAGE_PIXELS = 2 * MAX_PIXELS
-
-
-### define functions
-def download_file(url, local_path="."):
-  file_name = url.split("/")[-1]
-  file_path = path.join(local_path, file_name)
-
-  with request.urlopen(request.Request(url), timeout=30.0) as response:
-    if response.status == 200:
-      with open(file_path, "wb") as f:
-        f.write(response.read())
-  return file_path
-
-def download_extract(url, target_path):
-  tar_path = download_file(url)
-
-  tar = tarfile.open(tar_path, "r:gz")
-  tar.extractall(target_path, filter="data")
-  tar.close()
-  remove(tar_path)
-
-
-def download_image(id):
-  image_url = f"{IMG_URL}/full/{id}.jpg"
-  filename = f"{IMG_DIR}/{id}.jpg"
-  request.urlretrieve(image_url, filename)
 
 
 def get_min_height_and_size(idObjIdxs_data, min_min_height=64):
@@ -95,7 +71,7 @@ def get_grid_mosaic(idObjIdxs_all):
 
   for id in [x["id"] for x in idObjIdxs_data]:
     if not path.isfile(path.join(IMG_DIR, f"{id}.jpg")):
-      download_image(id)
+      download_image(IMG_URL, id)
 
   height_min, sizes = get_min_height_and_size(idObjIdxs_data)
   mos_w, mos_h, limit_scale = get_mosaic_size(idObjIdxs_data, height_min, sizes)
@@ -157,7 +133,7 @@ def get_xy_mosaic(idObjIdxs_all):
   for idObjIdxs in idObjIdxs_data:
     id = idObjIdxs["id"]
 
-    img = PImage.open(path.join(IMG_DIR, f"{id}.jpg"))
+    img = PImage.open(path.join(IMG_DIR, f"{id}.jpg")).convert("RGB")
     iw,ih = img.size
     w_scale, h_scale = XY_OUT_DIM[0] / iw, XY_OUT_DIM[1] / ih
     crop_scale = min(w_scale, h_scale)
@@ -165,24 +141,18 @@ def get_xy_mosaic(idObjIdxs_all):
 
     for idx in idObjIdxs["objIdxs"]:
       (x0,y0,x1,y1) = all_data[id]["objects"][idx]["box"]
+
       crop_w = (x1 - x0)
       crop_h = (y1 - y0)
 
       center_x = (x0 + x1) / 2
       center_y = (y0 + y1) / 2
 
-      src_x0 = int(x0 * iw)
-      src_y0 = int(y0 * ih)
-      src_x1 = int(x1 * iw)
-      src_y1 = int(y1 * ih)
-
       dst_w = int(crop_w * siw)
       dst_h = int(crop_h * sih)
 
-      dst_x0 = max(0, min(int(center_x * XY_OUT_DIM[0] - (dst_w / 2)), XY_OUT_DIM[0]))
-      dst_y0 = max(0, min(int(center_y * XY_OUT_DIM[1] - (dst_h / 2)), XY_OUT_DIM[1]))
-      dst_x1 = max(0, min(int(center_x * XY_OUT_DIM[0] + (dst_w / 2)), XY_OUT_DIM[0]))
-      dst_y1 = max(0, min(int(center_y * XY_OUT_DIM[1] + (dst_h / 2)), XY_OUT_DIM[1]))
+      src_x0, src_y0, src_x1, src_y1 = boxpct2pix((x0,y0,x1,y1), (iw,ih))
+      dst_x0, dst_y0, dst_x1, dst_y1 = centerpct2boxpix((center_x, center_y), (dst_w, dst_h), XY_OUT_DIM)
 
       dst_w = dst_x1 - dst_x0
       dst_h = dst_y1 - dst_y0
@@ -191,8 +161,10 @@ def get_xy_mosaic(idObjIdxs_all):
       pix_vals[dst_y0:dst_y1, dst_x0:dst_x1] += crop_vals
       pix_cnts[dst_y0:dst_y1, dst_x0:dst_x1] += 1
 
-  pix_cnts = np.expand_dims(pix_cnts, axis=-1)
-  pix_avg = np.divide(pix_vals, pix_cnts, out=np.ones_like(pix_vals), where=pix_cnts!=0)
+  pix_cnts_div = np.expand_dims(pix_cnts.copy(), axis=-1)
+  pix_cnts_div[pix_cnts == 0] = 1
+
+  pix_avg = pix_vals / pix_cnts_div
   return PImage.fromarray(pix_avg.astype(np.uint8))
 
 
