@@ -7,13 +7,14 @@ from os import makedirs, path
 from PIL import Image as PImage
 
 from utils import download_extract, download_file, download_image
-from utils import boxpct2pix, centerpct2boxpix, constrain
+from utils import boxpct2pix, centerpct2boxpix
 
 
 OBJS_URLS = "https://raw.githubusercontent.com/acervos-digitais/herbario-data/main/json/20250705_processed.json"
 IMG_URL = "https://digitais.acervos.at.eu.org/imgs/herbario/arts"
 IMG_DIR = "./imgs/full"
 XY_OUT_DIM = (1024, 1024)
+XY_CROP_MAX = 0.45
 MAX_PIXELS = 2**25
 PImage.MAX_IMAGE_PIXELS = 2 * MAX_PIXELS
 
@@ -144,6 +145,9 @@ def get_xy_mosaic(idObjIdxs_all):
 
       crop_w = (x1 - x0)
       crop_h = (y1 - y0)
+
+      if crop_w > XY_CROP_MAX or crop_h > XY_CROP_MAX:
+        continue
 
       center_x = (x0 + x1) / 2
       center_y = (y0 + y1) / 2
